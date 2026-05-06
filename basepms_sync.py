@@ -2,16 +2,21 @@ import requests
 import json
 import os
 import time
+import base64
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
 # ── CONFIG ───────────────────────────────────────────────────
-API_ROOT      = "https://hfs.api.basepms.com"
-API_TOKEN     = os.environ.get("BASEPMS_API_TOKEN", "")
-SHEET_ID      = os.environ.get("SHEET_ID", "")
-FORCE_PUSH    = os.environ.get("FORCE_PUSH", "false").lower() == "true"
-DELAY_SECONDS = 1.1
+API_ROOT        = "https://hfs.api.basepms.com"
+API_TOKEN       = os.environ.get("BASEPMS_API_TOKEN", "")
+SHEET_ID        = os.environ.get("SHEET_ID", "")
+FORCE_PUSH      = os.environ.get("FORCE_PUSH", "false").lower() == "true"
+GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO     = "shadybaby-hub/basepms-sync"
+GITHUB_BRANCH   = "main"
+IMAGES_FOLDER   = "images"
+DELAY_SECONDS   = 1.1
 
 ACADEMIC_YEARS = ["2025/2026", "2026/2027"]
 
@@ -69,6 +74,94 @@ def to_list(resp):
                 return resp[key]
         return [resp]
     return []
+
+# ── IMAGE RE-HOSTING ──────────────────────────────────────────
+# Tracks filenames already uploaded this run to avoid duplicate API calls
+_uploaded_this_run = set()
+
+def get_existing_github_images():
+    """Fetch the list of already-uploaded images from the GitHub repo."""
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{IMAGES_FOLDER}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 404:
+        # Folder doesn't exist yet — no images uploaded
+        return set()
+    if response.ok:
+        return {item["name"] for item in response.json()}
+    return set()
+
+def upload_image_to_github(image_url, existing_filenames):
+    """
+    Downloads an image from BasePMS using the Bearer token,
+    then uploads it to the GitHub repo's images/ folder.
+    Returns the public raw.githubusercontent.com URL, or the
+    original URL if anything fails.
+    """
+    if not GITHUB_TOKEN:
+        return image_url
+
+    # Extract filename from URL
+    filename = image_url.split("/")[-1].split("?")[0]
+    if not filename:
+        return image_url
+
+    # Skip if already uploaded (either this run or in a previous run)
+    if filename in _uploaded_this_run or filename in existing_filenames:
+        public_url = (
+            f"https://raw.githubusercontent.com/{GITHUB_REPO}/"
+            f"{GITHUB_BRANCH}/{IMAGES_FOLDER}/{filename}"
+        )
+        return public_url
+
+    # Download image from BasePMS with auth
+    try:
+        img_response = requests.get(
+            image_url,
+            headers={"Authorization": f"Bearer {API_TOKEN}"},
+            timeout=15
+        )
+        img_response.raise_for_status()
+        image_data = img_response.content
+    except Exception as e:
+        print(f"    ⚠  Image download failed ({filename}): {e}")
+        return image_url
+
+    # Upload to GitHub
+    try:
+        encoded = base64.b64encode(image_data).decode("utf-8")
+        gh_url = (
+            f"https://api.github.com/repos/{GITHUB_REPO}/"
+            f"contents/{IMAGES_FOLDER}/{filename}"
+        )
+        payload = {
+            "message": f"Add image {filename}",
+            "content": encoded,
+            "branch": GITHUB_BRANCH
+        }
+        gh_headers = {
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json"
+        }
+        gh_response = requests.put(gh_url, json=payload, headers=gh_headers, timeout=30)
+
+        if gh_response.status_code in (200, 201):
+            _uploaded_this_run.add(filename)
+            public_url = (
+                f"https://raw.githubusercontent.com/{GITHUB_REPO}/"
+                f"{GITHUB_BRANCH}/{IMAGES_FOLDER}/{filename}"
+            )
+            return public_url
+        else:
+            print(f"    ⚠  GitHub upload failed ({filename}): {gh_response.status_code}")
+            return image_url
+
+    except Exception as e:
+        print(f"    ⚠  GitHub upload error ({filename}): {e}")
+        return image_url
 
 # ── GOOGLE SHEETS AUTH ────────────────────────────────────────
 def get_gspread_client():
@@ -136,6 +229,11 @@ def main():
         image_tab = f"{today}_images"
         print(f"\nMode: SCHEDULED → tabs: '{main_tab}', '{image_tab}'")
 
+    # ── Pre-load existing GitHub images ──────────────────────
+    print("\nChecking existing images in GitHub repo...")
+    existing_filenames = get_existing_github_images()
+    print(f"  {len(existing_filenames)} images already uploaded")
+
     # ── Connect to Google Sheets ──────────────────────────────
     print("\nConnecting to Google Sheets...")
     client      = get_gspread_client()
@@ -161,7 +259,7 @@ def main():
     # ── Process each property ─────────────────────────────────
     for i, prop in enumerate(all_properties):
         brand = get_brand(prop.get("email", ""))
-        seen_room_types = set()  # track rooms already processed for images
+        seen_room_types = set()
 
         for ay in ACADEMIC_YEARS:
             time.sleep(DELAY_SECONDS)
@@ -177,6 +275,13 @@ def main():
             rt_list = to_list(room_types)
 
             for rt in rt_list:
+                # ── Resolve thumbnail → public GitHub URL ─────
+                raw_thumbnail = rt.get("thumbnail") or prop.get("thumbnail") or ""
+                if raw_thumbnail and raw_thumbnail.startswith("https://hfs.api.basepms.com"):
+                    public_thumbnail = upload_image_to_github(raw_thumbnail, existing_filenames)
+                else:
+                    public_thumbnail = raw_thumbnail
+
                 # ── Main data rows (instalments) ──────────────
                 for inst in to_list(rt.get("instalments", [])):
                     pricing = inst.get("pricing") or {}
@@ -190,7 +295,7 @@ def main():
                         pricing.get("price", ""),
                         pricing.get("price_formatted", ""),
                         str(pricing.get("available", "")),
-                        rt.get("thumbnail") or prop.get("thumbnail") or "",
+                        public_thumbnail,
                         inst.get("name", ""),
                         inst.get("start_date", ""),
                         inst.get("end_date", ""),
@@ -231,6 +336,7 @@ def main():
     print(f"COMPLETE")
     print(f"  ✓ {total_main} rows → '{main_tab}'")
     print(f"  ✓ {total_imgs} image rows → '{image_tab}'")
+    print(f"  ✓ {len(_uploaded_this_run)} new images uploaded to GitHub")
     print("=" * 60)
 
 if __name__ == "__main__":
