@@ -81,18 +81,27 @@ _uploaded_this_run = set()
 
 def get_existing_github_images():
     """Fetch the list of already-uploaded images from the GitHub repo."""
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{IMAGES_FOLDER}"
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
     }
-    response = requests.get(url, headers=headers)
-    if response.status_code == 404:
-        # Folder doesn't exist yet — no images uploaded
-        return set()
-    if response.ok:
-        return {item["name"] for item in response.json()}
-    return set()
+    existing = set()
+    page = 1
+    while True:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{IMAGES_FOLDER}?per_page=100&page={page}"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 404:
+            break
+        if not response.ok:
+            break
+        items = response.json()
+        if not items:
+            break
+        existing.update(item["name"] for item in items)
+        if len(items) < 100:
+            break
+        page += 1
+    return existing
 
 def upload_image_to_github(image_url, existing_filenames):
     """
