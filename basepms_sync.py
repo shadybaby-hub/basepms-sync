@@ -80,28 +80,30 @@ def to_list(resp):
 _uploaded_this_run = set()
 
 def get_existing_github_images():
-    """Fetch the list of already-uploaded images from the GitHub repo."""
+    """Fetch all uploaded image filenames using the Git Trees API."""
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
     }
-    existing = set()
-    page = 1
-    while True:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{IMAGES_FOLDER}?per_page=100&page={page}"
-        response = requests.get(url, headers=headers)
-        if response.status_code == 404:
-            break
-        if not response.ok:
-            break
-        items = response.json()
-        if not items:
-            break
-        existing.update(item["name"] for item in items)
-        if len(items) < 100:
-            break
-        page += 1
-    return existing
+    # Get the latest commit SHA for the branch
+    ref_url = f"https://api.github.com/repos/{GITHUB_REPO}/git/ref/heads/{GITHUB_BRANCH}"
+    ref_resp = requests.get(ref_url, headers=headers)
+    if not ref_resp.ok:
+        return set()
+    tree_sha = ref_resp.json()["object"]["sha"]
+
+    # Get the full tree recursively
+    tree_url = f"https://api.github.com/repos/{GITHUB_REPO}/git/trees/{tree_sha}?recursive=1"
+    tree_resp = requests.get(tree_url, headers=headers)
+    if not tree_resp.ok:
+        return set()
+
+    files = tree_resp.json().get("tree", [])
+    return {
+        item["path"].split("/")[-1]
+        for item in files
+        if item["path"].startswith(f"{IMAGES_FOLDER}/")
+    }
 
 def upload_image_to_github(image_url, existing_filenames):
     """
