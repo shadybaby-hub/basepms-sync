@@ -1,0 +1,38 @@
+name: BasePMS Friday Sync & Compare
+
+on:
+  # Scheduled: every Friday at 12:00 UTC
+  schedule:
+    - cron: '0 12 * * 5'
+
+  # Manual trigger
+  workflow_dispatch:
+
+jobs:
+  friday_sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Friday sync and compare
+        env:
+          BASEPMS_API_TOKEN: ${{ secrets.BASEPMS_API_TOKEN }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_MODE: friday
+        run: python basepms_sync.py
+
+permissions:
+  contents: write
