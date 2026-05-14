@@ -1,7 +1,7 @@
 name: BasePMS Sync
 
 on:
-  # Scheduled: every Tuesday at 23:00 UTC
+  # Scheduled: every Wednesday at 23:00 UTC
   schedule:
     - cron: '0 23 * * 2'
 
@@ -16,13 +16,14 @@ on:
         options:
           - 'true'
           - 'false'
-permissions:
-  contents: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -41,6 +42,6 @@ jobs:
           BASEPMS_API_TOKEN: ${{ secrets.BASEPMS_API_TOKEN }}
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-          FORCE_PUSH: ${{ github.event.inputs.force_push || 'false' }}
+          FORCE_PUSH: ${{ github.event.inputs.force_push || 'true' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python basepms_sync.py
