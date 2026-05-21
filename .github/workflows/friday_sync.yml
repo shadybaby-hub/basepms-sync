@@ -3,7 +3,7 @@ name: BasePMS Friday Sync & Compare
 on:
   # Scheduled: every Friday at 12:00 UTC
   schedule:
-    - cron: '0 12 * * 5'
+    - cron: '0 8 * * 5'
 
   # Manual trigger
   workflow_dispatch:
