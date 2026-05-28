@@ -1,9 +1,10 @@
 name: BasePMS Sync
 
 on:
-  # Scheduled: every Tuesday at 23:00 UTC
+  # Scheduled: Monday through 
+  Friday at 23:00 UTC
   schedule:
-    - cron: '0 23 * * *'
+    - cron: '0 23 * * 1-5'
 
   # Manual force push via GitHub UI
   workflow_dispatch:
