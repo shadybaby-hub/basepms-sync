@@ -1,11 +1,7 @@
 name: BasePMS Sync
 
 on:
-  # Scheduled: Monday through Friday at 23:00 UTC
-  schedule:
-    - cron: '0 23 * * 1-5'
-
-  # Manual trigger via GitHub UI
+  # Manual trigger only (Actions → BasePMS Sync → Run workflow)
   workflow_dispatch:
 
 jobs:
