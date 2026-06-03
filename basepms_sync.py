@@ -70,6 +70,9 @@ BRAND_LOOKUP = {
 # Yellow background for changed cells
 YELLOW = {"red": 1.0, "green": 0.95, "blue": 0.0}
 
+# Header row background for the secondary rolling tabs — #F5A04C
+HEADER_BG = {"red": 245 / 255, "green": 160 / 255, "blue": 76 / 255}
+
 # ── HELPERS ───────────────────────────────────────────────────
 def get_brand(email):
     if not email or "@" not in email:
@@ -236,6 +239,23 @@ def get_tab_keep(spreadsheet, tab_name, cols):
     except gspread.exceptions.WorksheetNotFound:
         return spreadsheet.add_worksheet(title=tab_name, rows=2000, cols=cols)
 
+def prettify_header(cols):
+    """'image_url' -> 'Image Url' : underscores to spaces, title-case each word."""
+    return [" ".join(w.capitalize() for w in c.split("_")) for c in cols]
+
+def _col_letter(n):
+    """1 -> 'A', 16 -> 'P', etc."""
+    s = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+def style_header_row(ws, ncols):
+    """Freeze row 1 and give it the HEADER_BG background."""
+    ws.format(f"A1:{_col_letter(ncols)}1", {"backgroundColor": HEADER_BG})
+    ws.freeze(rows=1)
+
 def push_rolling_subset(spreadsheet, tab_name, header, dated_new_rows, today_iso):
     """Maintain a single rolling tab: newest rows on top, keep ROLLING_DAYS days.
 
@@ -263,6 +283,7 @@ def push_rolling_subset(spreadsheet, tab_name, header, dated_new_rows, today_iso
     ws.clear()
     ws.resize(rows=max(len(final), 1), cols=len(header))
     ws.update(final, value_input_option="USER_ENTERED")
+    style_header_row(ws, len(header))
     print(f"  ✓ {len(dated_new_rows)} new + {len(kept)} kept → '{tab_name}' (rolling {ROLLING_DAYS}d)")
 
 # ── FETCH ALL PROPERTIES ──────────────────────────────────────
@@ -606,9 +627,9 @@ def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows, spreadsheet
         images_new = [[today_iso] + r for r in img_comp_rows[1:] if r[5]  != "NO CHANGE"]
         try:
             push_rolling_subset(spreadsheet2, "Rooms",
-                                ["date"] + COMPARISON_HEADERS, rooms_new, today_iso)
+                                prettify_header(["date"] + COMPARISON_HEADERS), rooms_new, today_iso)
             push_rolling_subset(spreadsheet2, "Room Images",
-                                ["date"] + COMPARISON_IMAGE_HEADERS, images_new, today_iso)
+                                prettify_header(["date"] + COMPARISON_IMAGE_HEADERS), images_new, today_iso)
         except Exception as e:
             print(f"  ⚠  Secondary sheet push failed (is it shared with the "
                   f"service account?): {e}")

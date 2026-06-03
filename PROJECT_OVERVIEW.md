@@ -103,6 +103,7 @@ Behaviour:
 - **Newest day on top** — today's changed rows are prepended above the existing rows.
 - **Rolling 30 days** (`ROLLING_DAYS`) — rows with a `date` older than 30 days are pruned on each run.
 - **Idempotent per day** — re-running on the same date replaces that day's block instead of duplicating it.
+- **Header styling** — row 1 is frozen with an `#F5A04C` background, and the header labels are prettified (underscores → spaces, title-cased), e.g. `change_flag` → `Change Flag`. Reapplied every run.
 
 > The service account (from `GOOGLE_CREDENTIALS`) **must be shared as an Editor** on the secondary sheet, or this push fails (the failure is caught and logged; it does not abort the primary comparison). The sheet ID has a default baked into the script but can be overridden with the `SHEET_ID_2` env var.
 
