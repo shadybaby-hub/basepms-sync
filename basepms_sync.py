@@ -257,8 +257,14 @@ def _col_letter(n):
     return s
 
 def style_header_row(ws, ncols):
-    """Freeze row 1 and give it the HEADER_BG background."""
-    ws.format(f"A1:{_col_letter(ncols)}1", {"backgroundColor": HEADER_BG})
+    """Freeze row 1 and give it the HEADER_BG background with bold white text."""
+    ws.format(f"A1:{_col_letter(ncols)}1", {
+        "backgroundColor": HEADER_BG,
+        "textFormat": {
+            "bold": True,
+            "foregroundColor": {"red": 1, "green": 1, "blue": 1}
+        }
+    })
     ws.freeze(rows=1)
 
 def push_rolling_subset(spreadsheet, tab_name, header, dated_new_rows, today_iso):
