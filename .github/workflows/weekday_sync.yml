@@ -1,4 +1,4 @@
-name: BasePMS Friday Sync & Compare
+name: BasePMS Weekday Sync & Compare
 
 on:
   # Scheduled: Monday–Friday at 07:42 BST (06:42 UTC)
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  friday_sync:
+  weekday_sync:
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Friday sync and compare
+      - name: Run weekday sync and compare
         env:
           BASEPMS_API_TOKEN: ${{ secrets.BASEPMS_API_TOKEN }}
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}

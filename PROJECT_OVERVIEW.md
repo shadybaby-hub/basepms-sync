@@ -29,9 +29,9 @@ Everything else is supporting infrastructure:
 
 The script behaviour is controlled by the `RUN_MODE` environment variable.
 
-### Mode 1: `sync` (runs Mon–Fri at 23:00 UTC)
+### Mode 1: `sync` (manual only)
 
-Triggered by `.github/workflows/sync.yml`.
+Triggered by `.github/workflows/manual_sync.yml` (manual `workflow_dispatch` only — no schedule).
 
 1. Fetches all properties from BasePMS (paginated)
 2. For each property, fetches room types + pricing for **2025/2026** and **2026/2027**
@@ -44,7 +44,7 @@ No Google Sheets are touched in this mode.
 
 ### Mode 2: `friday` (runs Mon–Fri at 06:42 UTC)
 
-Triggered by `.github/workflows/friday_sync.yml`. Does everything in Mode 1, **plus**:
+Triggered by `.github/workflows/weekday_sync.yml`. Does everything in Mode 1, **plus**:
 
 1. Writes a **dated snapshot** of the full dataset:
    - `data/snapshots/basepms_YYYYMMDD.csv`
@@ -98,7 +98,7 @@ Image-level diff. Each row is a `(property, room_type, image_url)` combination w
 | `Comparison_YYYYMMDD` (Google Sheet) | Friday mode | Run-over-run pricing/date/image diff |
 | `Comparison_YYYYMMDD_images` (Google Sheet) | Friday mode | Run-over-run image diff |
 
-> CSVs are written via the GitHub Contents API using `GITHUB_TOKEN`. The comparison reads the previous snapshot from the **checked-out copy** of the repo, so the `friday_sync.yml` workflow must keep the `actions/checkout` step.
+> CSVs are written via the GitHub Contents API using `GITHUB_TOKEN`. The comparison reads the previous snapshot from the **checked-out copy** of the repo, so the `weekday_sync.yml` workflow must keep the `actions/checkout` step.
 
 ---
 
@@ -170,7 +170,7 @@ The script sleeps `1.1 seconds` between every API call (`DELAY_SECONDS = 1.1`). 
 
 ## How to Run Manually
 
-Via GitHub UI: go to **Actions → BasePMS Sync → Run workflow** (or the Friday workflow).
+Via GitHub UI: go to **Actions → BasePMS Manual Sync → Run workflow** (or the **BasePMS Weekday Sync & Compare** workflow).
 
 Locally (requires the env vars set — `RUN_MODE=friday` also needs `GOOGLE_CREDENTIALS` and `SHEET_ID`):
 ```bash

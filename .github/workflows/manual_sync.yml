@@ -1,7 +1,7 @@
-name: BasePMS Sync
+name: BasePMS Manual Sync
 
 on:
-  # Manual trigger only (Actions → BasePMS Sync → Run workflow)
+  # Manual trigger only (Actions → BasePMS Manual Sync → Run workflow)
   workflow_dispatch:
 
 jobs:
