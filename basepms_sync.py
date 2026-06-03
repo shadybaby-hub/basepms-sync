@@ -239,9 +239,14 @@ def get_tab_keep(spreadsheet, tab_name, cols):
     except gspread.exceptions.WorksheetNotFound:
         return spreadsheet.add_worksheet(title=tab_name, rows=2000, cols=cols)
 
+ACRONYMS = {"url": "URL", "id": "ID"}
+
 def prettify_header(cols):
-    """'image_url' -> 'Image Url' : underscores to spaces, title-case each word."""
-    return [" ".join(w.capitalize() for w in c.split("_")) for c in cols]
+    """'image_url' -> 'Image URL' : underscores to spaces, title-case each word,
+    with known acronyms fully capitalised."""
+    def word(w):
+        return ACRONYMS.get(w.lower(), w.capitalize())
+    return [" ".join(word(w) for w in c.split("_")) for c in cols]
 
 def _col_letter(n):
     """1 -> 'A', 16 -> 'P', etc."""
