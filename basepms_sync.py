@@ -1,6 +1,10 @@
 import requests
 import json
 import os
+import io
+import csv
+import re
+import glob
 import time
 import base64
 from datetime import datetime
@@ -11,14 +15,14 @@ from google.oauth2.service_account import Credentials
 API_ROOT        = "https://hfs.api.basepms.com"
 API_TOKEN       = os.environ.get("BASEPMS_API_TOKEN", "")
 SHEET_ID        = os.environ.get("SHEET_ID", "")
-FORCE_PUSH      = os.environ.get("FORCE_PUSH", "false").lower() == "true"
 RUN_MODE        = os.environ.get("RUN_MODE", "sync")   # "sync" or "friday"
 GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO     = "shadybaby-hub/basepms-sync"
 GITHUB_BRANCH   = "main"
 IMAGES_FOLDER   = "images"
+DATA_FOLDER     = "data"
+SNAPSHOT_FOLDER = "data/snapshots"
 DELAY_SECONDS   = 1.1
-MAX_ARCHIVE_TABS = 10
 
 ACADEMIC_YEARS = ["2025/2026", "2026/2027"]
 
@@ -94,11 +98,11 @@ def to_list(resp):
         return [resp]
     return []
 
-# ── IMAGE RE-HOSTING ──────────────────────────────────────────
-_uploaded_this_run = set()
-
-def get_existing_github_images():
-    """Fetch all uploaded image filenames using the Git Trees API."""
+# ── GITHUB REPO ACCESS ────────────────────────────────────────
+def get_repo_file_shas():
+    """Return {path: blob_sha} for every file in the repo via the Git Trees API."""
+    if not GITHUB_TOKEN:
+        return {}
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
@@ -106,20 +110,61 @@ def get_existing_github_images():
     ref_url = f"https://api.github.com/repos/{GITHUB_REPO}/git/ref/heads/{GITHUB_BRANCH}"
     ref_resp = requests.get(ref_url, headers=headers)
     if not ref_resp.ok:
-        return set()
+        return {}
     tree_sha = ref_resp.json()["object"]["sha"]
 
     tree_url = f"https://api.github.com/repos/{GITHUB_REPO}/git/trees/{tree_sha}?recursive=1"
     tree_resp = requests.get(tree_url, headers=headers)
     if not tree_resp.ok:
-        return set()
+        return {}
 
     files = tree_resp.json().get("tree", [])
-    return {
-        item["path"].split("/")[-1]
-        for item in files
-        if item["path"].startswith(f"{IMAGES_FOLDER}/")
+    return {item["path"]: item["sha"] for item in files if item.get("type") == "blob"}
+
+def github_put_file(repo_path, content, message, file_shas=None):
+    """Create or update a file in the repo via the Contents API.
+
+    content may be str (encoded as UTF-8) or bytes. Pass file_shas (path→sha
+    map from get_repo_file_shas) so existing files are updated rather than
+    rejected with a 409.
+    """
+    if not GITHUB_TOKEN:
+        print(f"    ⚠  No GITHUB_TOKEN — cannot write {repo_path}")
+        return False
+
+    if isinstance(content, str):
+        content = content.encode("utf-8")
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{repo_path}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
     }
+    payload = {
+        "message": message,
+        "content": base64.b64encode(content).decode("utf-8"),
+        "branch": GITHUB_BRANCH
+    }
+
+    sha = (file_shas or {}).get(repo_path)
+    if sha:
+        payload["sha"] = sha
+
+    resp = requests.put(url, json=payload, headers=headers, timeout=60)
+    if resp.status_code in (200, 201):
+        print(f"  ✓ Wrote {repo_path}")
+        return True
+    print(f"  ⚠  GitHub write failed ({repo_path}): {resp.status_code} {resp.text[:200]}")
+    return False
+
+def rows_to_csv(rows):
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerows(rows)
+    return buf.getvalue()
+
+# ── IMAGE RE-HOSTING ──────────────────────────────────────────
+_uploaded_this_run = set()
 
 def upload_image_to_github(image_url, existing_filenames):
     if not GITHUB_TOKEN:
@@ -147,36 +192,18 @@ def upload_image_to_github(image_url, existing_filenames):
         print(f"    ⚠  Image download failed ({filename}): {e}")
         return image_url
 
-    try:
-        encoded = base64.b64encode(image_data).decode("utf-8")
-        gh_url = (
-            f"https://api.github.com/repos/{GITHUB_REPO}/"
-            f"contents/{IMAGES_FOLDER}/{filename}"
+    ok = github_put_file(
+        f"{IMAGES_FOLDER}/{filename}",
+        image_data,
+        f"Add image {filename}"
+    )
+    if ok:
+        _uploaded_this_run.add(filename)
+        return (
+            f"https://raw.githubusercontent.com/{GITHUB_REPO}/"
+            f"{GITHUB_BRANCH}/{IMAGES_FOLDER}/{filename}"
         )
-        payload = {
-            "message": f"Add image {filename}",
-            "content": encoded,
-            "branch": GITHUB_BRANCH
-        }
-        gh_headers = {
-            "Authorization": f"Bearer {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github+json"
-        }
-        gh_response = requests.put(gh_url, json=payload, headers=gh_headers, timeout=30)
-
-        if gh_response.status_code in (200, 201):
-            _uploaded_this_run.add(filename)
-            return (
-                f"https://raw.githubusercontent.com/{GITHUB_REPO}/"
-                f"{GITHUB_BRANCH}/{IMAGES_FOLDER}/{filename}"
-            )
-        else:
-            print(f"    ⚠  GitHub upload failed ({filename}): {gh_response.status_code}")
-            return image_url
-
-    except Exception as e:
-        print(f"    ⚠  GitHub upload error ({filename}): {e}")
-        return image_url
+    return image_url
 
 # ── GOOGLE SHEETS AUTH ────────────────────────────────────────
 def get_gspread_client():
@@ -199,41 +226,6 @@ def get_or_create_tab(spreadsheet, tab_name):
         sheet = spreadsheet.add_worksheet(title=tab_name, rows=10000, cols=20)
         print(f"  Created new tab: {tab_name}")
     return sheet
-
-def copy_tab(spreadsheet, source_name, dest_name):
-    """Copy source tab to dest_name. Overwrites dest if it exists."""
-    try:
-        source = spreadsheet.worksheet(source_name)
-    except gspread.exceptions.WorksheetNotFound:
-        print(f"  ⚠  Source tab '{source_name}' not found — skipping archive")
-        return False
-
-    data = source.get_all_values()
-    if not data:
-        print(f"  ⚠  Source tab '{source_name}' is empty — skipping archive")
-        return False
-
-    try:
-        dest = spreadsheet.worksheet(dest_name)
-        dest.clear()
-    except gspread.exceptions.WorksheetNotFound:
-        dest = spreadsheet.add_worksheet(title=dest_name, rows=len(data) + 100, cols=20)
-
-    dest.update(data, value_input_option="USER_ENTERED")
-    print(f"  Archived '{source_name}' → '{dest_name}' ({len(data)-1} rows)")
-    return True
-
-def prune_old_archive_tabs(spreadsheet, prefix, max_tabs):
-    """Delete oldest archive tabs beyond max_tabs for a given prefix."""
-    all_titles = [ws.title for ws in spreadsheet.worksheets()]
-    archive_tabs = sorted([
-        t for t in all_titles
-        if t.startswith(prefix + "_") and t[len(prefix)+1:].isdigit()
-    ])
-    while len(archive_tabs) > max_tabs:
-        oldest = archive_tabs.pop(0)
-        spreadsheet.del_worksheet(spreadsheet.worksheet(oldest))
-        print(f"  Pruned old archive tab: {oldest}")
 
 # ── FETCH ALL PROPERTIES ──────────────────────────────────────
 def fetch_all_properties():
@@ -262,27 +254,20 @@ def fetch_all_properties():
 
     return properties
 
-# ── SYNC ─────────────────────────────────────────────────────
-def run_sync(spreadsheet, main_tab, image_tab):
-    print("\nChecking existing images in GitHub repo...")
-    existing_filenames = get_existing_github_images()
-    print(f"  {len(existing_filenames)} images already uploaded")
+# ── COLLECT DATA ──────────────────────────────────────────────
+def collect_data(existing_image_filenames):
+    """Fetch all properties/room-types/pricing/images from BasePMS.
 
-    main_sheet = get_or_create_tab(spreadsheet, main_tab)
-    img_sheet  = get_or_create_tab(spreadsheet, image_tab)
-
-    main_sheet.append_row(MAIN_HEADERS)
-    img_sheet.append_row(IMAGE_HEADERS)
-
+    Returns (main_rows, image_rows), each a list of lists with the header row
+    at index 0 — ready to be serialised as CSV.
+    """
     print("\nFetching all properties...")
     all_properties = fetch_all_properties()
     print(f"\nTotal: {len(all_properties)} properties\n")
 
     scraped_at = datetime.now().strftime("%d/%m/%Y %H:%M")
-    main_rows  = []
-    image_rows = []
-    total_main = 0
-    total_imgs = 0
+    main_rows  = [MAIN_HEADERS]
+    image_rows = [IMAGE_HEADERS]
 
     for i, prop in enumerate(all_properties):
         brand = get_brand(prop.get("email", ""))
@@ -304,7 +289,7 @@ def run_sync(spreadsheet, main_tab, image_tab):
             for rt in rt_list:
                 raw_thumbnail = rt.get("thumbnail") or prop.get("thumbnail") or ""
                 if raw_thumbnail and raw_thumbnail.startswith("https://hfs.api.basepms.com"):
-                    public_thumbnail = upload_image_to_github(raw_thumbnail, existing_filenames)
+                    public_thumbnail = upload_image_to_github(raw_thumbnail, existing_image_filenames)
                 else:
                     public_thumbnail = raw_thumbnail
 
@@ -345,21 +330,55 @@ def run_sync(spreadsheet, main_tab, image_tab):
         pct = round((i + 1) / len(all_properties) * 100)
         print(f"  [{pct:3d}%] {i+1}/{len(all_properties)} {prop['name']}")
 
-        if len(main_rows) >= 50 or (i == len(all_properties) - 1 and main_rows):
-            main_sheet.append_rows(main_rows, value_input_option="USER_ENTERED")
-            total_main += len(main_rows)
-            main_rows = []
-
-        if len(image_rows) >= 50 or (i == len(all_properties) - 1 and image_rows):
-            img_sheet.append_rows(image_rows, value_input_option="USER_ENTERED")
-            total_imgs += len(image_rows)
-            image_rows = []
-
-    print(f"\n  ✓ {total_main} rows → '{main_tab}'")
-    print(f"  ✓ {total_imgs} image rows → '{image_tab}'")
+    print(f"\n  ✓ {len(main_rows)-1} data rows collected")
+    print(f"  ✓ {len(image_rows)-1} image rows collected")
     print(f"  ✓ {len(_uploaded_this_run)} new images uploaded to GitHub")
+    return main_rows, image_rows
+
+# ── CSV OUTPUT ────────────────────────────────────────────────
+def write_latest_csv(main_rows, image_rows, file_shas):
+    print("\nWriting latest CSVs to GitHub...")
+    github_put_file(f"{DATA_FOLDER}/basepms_latest.csv",
+                    rows_to_csv(main_rows),
+                    "Update basepms_latest.csv", file_shas)
+    github_put_file(f"{DATA_FOLDER}/basepms_images_latest.csv",
+                    rows_to_csv(image_rows),
+                    "Update basepms_images_latest.csv", file_shas)
+
+def write_snapshot_csv(main_rows, image_rows, today, file_shas):
+    print("\nWriting dated snapshot CSVs to GitHub...")
+    github_put_file(f"{SNAPSHOT_FOLDER}/basepms_{today}.csv",
+                    rows_to_csv(main_rows),
+                    f"Snapshot basepms {today}", file_shas)
+    github_put_file(f"{SNAPSHOT_FOLDER}/basepms_images_{today}.csv",
+                    rows_to_csv(image_rows),
+                    f"Snapshot basepms images {today}", file_shas)
 
 # ── COMPARE ───────────────────────────────────────────────────
+def read_csv_file(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="", encoding="utf-8") as f:
+        return [row for row in csv.reader(f)]
+
+def normalize_rows(rows):
+    """Round-trip in-memory rows through CSV so values are strings that match
+    exactly what is written to disk (the previous snapshot is read back as
+    strings, so the current data must be compared in the same form)."""
+    return [row for row in csv.reader(io.StringIO(rows_to_csv(rows)))]
+
+def find_previous_snapshot_date(today):
+    """Most recent dated main snapshot in the repo checkout, excluding today's."""
+    dates = []
+    for path in glob.glob(os.path.join(SNAPSHOT_FOLDER, "basepms_*.csv")):
+        name = os.path.basename(path)
+        if name.startswith("basepms_images_"):
+            continue
+        m = re.match(r"basepms_(\d{8})\.csv$", name)
+        if m and m.group(1) != today:
+            dates.append(m.group(1))
+    return max(dates) if dates else None
+
 def rows_to_dict(rows, key_cols):
     """Convert list of rows (with header) into dict keyed by tuple of key_cols."""
     if not rows:
@@ -373,32 +392,20 @@ def rows_to_dict(rows, key_cols):
         result[key] = record
     return result
 
-def run_compare(spreadsheet, today):
-    FRIDAY_MAIN = "BasePMS_Friday"
-    FRIDAY_IMGS = "BasePMS_Friday_Images"
-
-    # Find most recent archive tab
-    all_titles = [ws.title for ws in spreadsheet.worksheets()]
-    archive_tabs = sorted([
-        t for t in all_titles
-        if t.startswith("BasePMS_Friday_") and t[len("BasePMS_Friday_"):].isdigit()
-    ])
-
-    if not archive_tabs:
-        print("  ⚠  No archive tab found — skipping comparison (first Friday run?)")
+def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows):
+    prev_date = find_previous_snapshot_date(today)
+    if not prev_date:
+        print("  ⚠  No previous snapshot found — skipping comparison (first run?)")
         return
 
-    prev_main_tab = archive_tabs[-1]
-    prev_imgs_tab = "BasePMS_Friday_Images_" + prev_main_tab[len("BasePMS_Friday_"):]
+    prev_main_rows  = read_csv_file(os.path.join(SNAPSHOT_FOLDER, f"basepms_{prev_date}.csv"))
+    prev_image_rows = read_csv_file(os.path.join(SNAPSHOT_FOLDER, f"basepms_images_{prev_date}.csv"))
 
-    print(f"\n  Comparing '{FRIDAY_MAIN}' vs '{prev_main_tab}'")
+    # Match the on-disk string form so typed values don't read as spurious changes
+    curr_main_rows  = normalize_rows(curr_main_rows)
+    curr_image_rows = normalize_rows(curr_image_rows)
 
-    try:
-        curr_main_rows = spreadsheet.worksheet(FRIDAY_MAIN).get_all_values()
-        prev_main_rows = spreadsheet.worksheet(prev_main_tab).get_all_values()
-    except gspread.exceptions.WorksheetNotFound as e:
-        print(f"  ⚠  Could not load tabs for comparison: {e}")
-        return
+    print(f"\n  Comparing snapshot {today} vs {prev_date}")
 
     MATCH_KEY = ["brand", "property_name", "city", "room_type", "academic_year", "duration_weeks"]
 
@@ -517,16 +524,6 @@ def run_compare(spreadsheet, today):
         print(f"  ✓ {len(yellow_cells)} cells highlighted yellow")
 
     # Image comparison
-    try:
-        curr_img_rows = spreadsheet.worksheet(FRIDAY_IMGS).get_all_values()
-    except gspread.exceptions.WorksheetNotFound:
-        curr_img_rows = []
-
-    try:
-        prev_img_rows = spreadsheet.worksheet(prev_imgs_tab).get_all_values()
-    except gspread.exceptions.WorksheetNotFound:
-        prev_img_rows = []
-
     IMG_KEY = ["brand", "property_name", "city", "room_type"]
 
     def img_set(rows):
@@ -542,8 +539,8 @@ def run_compare(spreadsheet, today):
             result.add((key, url))
         return result
 
-    curr_imgs = img_set(curr_img_rows)
-    prev_imgs = img_set(prev_img_rows)
+    curr_imgs = img_set(curr_image_rows)
+    prev_imgs = img_set(prev_image_rows)
 
     added   = curr_imgs - prev_imgs
     removed = prev_imgs - curr_imgs
@@ -567,39 +564,39 @@ def main():
     print("=" * 60)
     today = datetime.now().strftime("%Y%m%d")
 
-    print("\nConnecting to Google Sheets...")
-    client      = get_gspread_client()
-    spreadsheet = client.open_by_key(SHEET_ID)
+    print("\nReading existing repo file list from GitHub...")
+    file_shas = get_repo_file_shas()
+    existing_image_filenames = {
+        p.split("/")[-1] for p in file_shas if p.startswith(f"{IMAGES_FOLDER}/")
+    }
+    print(f"  {len(existing_image_filenames)} images already uploaded")
 
     if RUN_MODE == "friday":
         print("BasePMS Friday Sync & Compare")
         print("=" * 60)
 
-        FRIDAY_MAIN = "BasePMS_Friday"
-        FRIDAY_IMGS = "BasePMS_Friday_Images"
+        print("\nConnecting to Google Sheets...")
+        client      = get_gspread_client()
+        spreadsheet = client.open_by_key(SHEET_ID)
 
-        # Step 1 — Archive before overwriting
-        print("\nArchiving current Friday data...")
-        copy_tab(spreadsheet, FRIDAY_MAIN, f"BasePMS_Friday_{today}")
-        copy_tab(spreadsheet, FRIDAY_IMGS, f"BasePMS_Friday_Images_{today}")
+        # Step 1 — Fetch fresh data
+        main_rows, image_rows = collect_data(existing_image_filenames)
 
-        # Step 2 — Prune oldest archives
-        prune_old_archive_tabs(spreadsheet, "BasePMS_Friday", MAX_ARCHIVE_TABS)
-        prune_old_archive_tabs(spreadsheet, "BasePMS_Friday_Images", MAX_ARCHIVE_TABS)
+        # Step 2 — Persist full data to GitHub as CSV (latest + dated snapshot)
+        write_latest_csv(main_rows, image_rows, file_shas)
+        write_snapshot_csv(main_rows, image_rows, today, file_shas)
 
-        # Step 3 — Fresh sync
-        print("\nFetching fresh Friday data...")
-        run_sync(spreadsheet, FRIDAY_MAIN, FRIDAY_IMGS)
-
-        # Step 4 — Compare
+        # Step 3 — Compare this snapshot against the previous one → Google Sheets
         print("\nRunning comparison...")
-        run_compare(spreadsheet, today)
+        run_compare(spreadsheet, today, main_rows, image_rows)
 
     else:
-        print("BasePMS → Google Sheets Sync")
+        print("BasePMS → GitHub CSV Sync")
         print("=" * 60)
-        print(f"\nMode: {'FORCE PUSH' if FORCE_PUSH else 'SCHEDULED'} → tabs: 'BasePMS', 'BasePMS Images'")
-        run_sync(spreadsheet, "BasePMS", "BasePMS Images")
+        print("\nMode: SYNC → data/basepms_latest.csv, data/basepms_images_latest.csv")
+
+        main_rows, image_rows = collect_data(existing_image_filenames)
+        write_latest_csv(main_rows, image_rows, file_shas)
 
     print("\n" + "=" * 60)
     print("COMPLETE")

@@ -5,17 +5,8 @@ on:
   schedule:
     - cron: '0 23 * * 1-5'
 
-  # Manual force push via GitHub UI
+  # Manual trigger via GitHub UI
   workflow_dispatch:
-    inputs:
-      force_push:
-        description: 'Force push to BasePMS tab instead of dated tab'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 jobs:
   sync:
@@ -40,8 +31,6 @@ jobs:
       - name: Run BasePMS sync
         env:
           BASEPMS_API_TOKEN: ${{ secrets.BASEPMS_API_TOKEN }}
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          FORCE_PUSH: ${{ github.event.inputs.force_push || 'true' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_MODE: sync
         run: python basepms_sync.py
