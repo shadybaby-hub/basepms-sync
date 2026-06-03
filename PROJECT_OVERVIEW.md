@@ -39,7 +39,7 @@ Triggered by `.github/workflows/sync.yml`.
    - `BasePMS` — one row per room type instalment (pricing, dates, thumbnail, etc.)
    - `BasePMS Images` — one row per image per room type
 
-### Mode 2: `friday` (runs every Friday at 08:00 UTC)
+### Mode 2: `friday` (runs Mon–Fri at 07:42 BST / 06:42 UTC)
 
 Triggered by `.github/workflows/friday_sync.yml`. Does everything in Mode 1, **plus**:
 

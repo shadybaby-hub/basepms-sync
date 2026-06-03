@@ -1,9 +1,9 @@
 name: BasePMS Friday Sync & Compare
 
 on:
-  # Scheduled: every Friday at 08:00 UTC
+  # Scheduled: Monday–Friday at 07:42 BST (06:42 UTC)
   schedule:
-    - cron: '0 8 * * 5'
+    - cron: '42 6 * * 1-5'
 
   # Manual trigger
   workflow_dispatch:
