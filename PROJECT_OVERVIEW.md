@@ -122,15 +122,6 @@ Behaviour:
 | `Rooms` (secondary Sheet `SHEET_ID_2`) | Friday mode | Rolling 30-day log of changed rooms (no `NO CHANGE`) |
 | `Room Images` (secondary Sheet `SHEET_ID_2`) | Friday mode | Rolling 30-day log of changed images (no `NO CHANGE`) |
 
-| Location | Written by | Contents |
-|---|---|---|
-| `data/basepms_latest.csv` (GitHub) | Every run | Current live data — all properties/rooms/pricing |
-| `data/basepms_images_latest.csv` (GitHub) | Every run | All image URLs per room type |
-| `data/snapshots/basepms_YYYYMMDD.csv` (GitHub) | Friday mode | Dated snapshot of the full data (kept forever) |
-| `data/snapshots/basepms_images_YYYYMMDD.csv` (GitHub) | Friday mode | Dated snapshot of the images |
-| `Comparison_YYYYMMDD` (Google Sheet) | Friday mode | Run-over-run pricing/date/image diff |
-| `Comparison_YYYYMMDD_images` (Google Sheet) | Friday mode | Run-over-run image diff |
-
 > CSVs are written via the GitHub Contents API using `GITHUB_TOKEN`. The comparison reads the previous snapshot from the **checked-out copy** of the repo, so the `weekday_sync.yml` workflow must keep the `actions/checkout` step.
 
 ---
