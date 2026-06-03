@@ -87,7 +87,39 @@ Image-level diff. Each row is a `(property, room_type, image_url)` combination w
 
 ---
 
+## Secondary Sheet — Changes-Only Rolling Log
+
+In `friday` mode, after writing the per-date `Comparison_*` tabs to the primary sheet, the script also pushes a **changes-only** view into a **second Google Sheet** (`SHEET_ID_2`). This is handled by `push_rolling_subset()`.
+
+Two single, ever-present tabs (not dated):
+
+| Tab | Source | Rows kept |
+|---|---|---|
+| `Rooms` | `Comparison_YYYYMMDD` | every row **except** `change_flag == NO CHANGE` |
+| `Room Images` | `Comparison_YYYYMMDD_images` | every row **except** `status == NO CHANGE` |
+
+Behaviour:
+- Each row gets a leading **`date`** column (ISO `YYYY-MM-DD`).
+- **Newest day on top** — today's changed rows are prepended above the existing rows.
+- **Rolling 30 days** (`ROLLING_DAYS`) — rows with a `date` older than 30 days are pruned on each run.
+- **Idempotent per day** — re-running on the same date replaces that day's block instead of duplicating it.
+
+> The service account (from `GOOGLE_CREDENTIALS`) **must be shared as an Editor** on the secondary sheet, or this push fails (the failure is caught and logged; it does not abort the primary comparison). The sheet ID has a default baked into the script but can be overridden with the `SHEET_ID_2` env var.
+
+---
+
 ## Where the Data Lives
+
+| Location | Written by | Contents |
+|---|---|---|
+| `data/basepms_latest.csv` (GitHub) | Every run | Current live data — all properties/rooms/pricing |
+| `data/basepms_images_latest.csv` (GitHub) | Every run | All image URLs per room type |
+| `data/snapshots/basepms_YYYYMMDD.csv` (GitHub) | Friday mode | Dated snapshot of the full data (kept forever) |
+| `data/snapshots/basepms_images_YYYYMMDD.csv` (GitHub) | Friday mode | Dated snapshot of the images |
+| `Comparison_YYYYMMDD` (primary Sheet) | Friday mode | Run-over-run pricing/date/image diff |
+| `Comparison_YYYYMMDD_images` (primary Sheet) | Friday mode | Run-over-run image diff |
+| `Rooms` (secondary Sheet `SHEET_ID_2`) | Friday mode | Rolling 30-day log of changed rooms (no `NO CHANGE`) |
+| `Room Images` (secondary Sheet `SHEET_ID_2`) | Friday mode | Rolling 30-day log of changed images (no `NO CHANGE`) |
 
 | Location | Written by | Contents |
 |---|---|---|
@@ -134,7 +166,8 @@ Set as GitHub Actions secrets.
 | `BASEPMS_API_TOKEN` | both modes | Bearer token for the BasePMS API |
 | `GITHUB_TOKEN` | both modes | Used to write CSVs and images to this repo via the Contents API (auto-provided by GitHub Actions; needs `contents: write`) |
 | `GOOGLE_CREDENTIALS` | `friday` only | Full JSON of a Google service account (Sheets + Drive) — for the comparison report |
-| `SHEET_ID` | `friday` only | The Google Sheet ID (from the URL) |
+| `SHEET_ID` | `friday` only | The primary Google Sheet ID (from the URL) |
+| `SHEET_ID_2` | `friday` only (optional) | The secondary Google Sheet ID for the rolling changes-only log. Has a default baked into the script; override only to point elsewhere. The service account must be an Editor on it. |
 
 `RUN_MODE` is set directly in the workflow YAML.
 
@@ -148,7 +181,9 @@ Set as GitHub Actions secrets.
 | `collect_data(existing_images)` | Fetches all data, returns `(main_rows, image_rows)` ready for CSV |
 | `write_latest_csv(...)` | Writes `data/basepms_latest.csv` + images CSV to the repo |
 | `write_snapshot_csv(..., today)` | Writes the dated snapshot CSVs to `data/snapshots/` |
-| `run_compare(spreadsheet, today, main_rows, image_rows)` | Diffs current data vs the previous snapshot and writes comparison tabs to Sheets |
+| `run_compare(spreadsheet, today, main_rows, image_rows, spreadsheet2)` | Diffs current data vs the previous snapshot, writes comparison tabs to the primary Sheet, and pushes the changes-only rolling log to the secondary Sheet |
+| `push_rolling_subset(sheet, tab, header, dated_rows, today)` | Maintains a single rolling tab: newest on top, replaces today's block, prunes rows older than `ROLLING_DAYS` |
+| `get_tab_keep(sheet, tab, cols)` | Gets a tab or creates it **without** clearing (used for the rolling tabs) |
 | `find_previous_snapshot_date(today)` | Finds the most recent dated snapshot in the checkout (excluding today's) |
 | `fetch_all_properties()` | Paginates the `/api/properties` endpoint |
 | `github_put_file(path, content, msg, shas)` | Creates/updates any file in the repo via the Contents API |

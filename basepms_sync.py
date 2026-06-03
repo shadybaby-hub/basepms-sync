@@ -7,7 +7,7 @@ import re
 import glob
 import time
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -15,6 +15,8 @@ from google.oauth2.service_account import Credentials
 API_ROOT        = "https://hfs.api.basepms.com"
 API_TOKEN       = os.environ.get("BASEPMS_API_TOKEN", "")
 SHEET_ID        = os.environ.get("SHEET_ID", "")
+SHEET_ID_2      = os.environ.get("SHEET_ID_2", "1SAoG7O64TOXjYMfzeyLwnPMbiVx7ge2Yio59aUh3iw0")
+ROLLING_DAYS    = 30   # how many days of changes to keep in the secondary sheet
 RUN_MODE        = os.environ.get("RUN_MODE", "sync")   # "sync" or "friday"
 GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO     = "shadybaby-hub/basepms-sync"
@@ -227,6 +229,42 @@ def get_or_create_tab(spreadsheet, tab_name):
         print(f"  Created new tab: {tab_name}")
     return sheet
 
+def get_tab_keep(spreadsheet, tab_name, cols):
+    """Get a tab, or create it (without clearing existing contents)."""
+    try:
+        return spreadsheet.worksheet(tab_name)
+    except gspread.exceptions.WorksheetNotFound:
+        return spreadsheet.add_worksheet(title=tab_name, rows=2000, cols=cols)
+
+def push_rolling_subset(spreadsheet, tab_name, header, dated_new_rows, today_iso):
+    """Maintain a single rolling tab: newest rows on top, keep ROLLING_DAYS days.
+
+    `header` includes the leading "date" column. `dated_new_rows` are today's
+    rows already prefixed with today's date. Rows from today are replaced (so
+    re-running the same day doesn't duplicate), and rows older than the cutoff
+    are dropped. Date strings are ISO (YYYY-MM-DD) so lexical compare == date
+    compare.
+    """
+    ws       = get_tab_keep(spreadsheet, tab_name, len(header))
+    existing = ws.get_all_values()
+
+    if existing and existing[0][:len(header)] == header:
+        old_rows = existing[1:]
+    else:
+        old_rows = existing
+
+    cutoff = (datetime.now() - timedelta(days=ROLLING_DAYS)).strftime("%Y-%m-%d")
+    kept = [
+        r for r in old_rows
+        if r and r[0] and r[0] != today_iso and r[0] >= cutoff
+    ]
+
+    final = [header] + dated_new_rows + kept
+    ws.clear()
+    ws.resize(rows=max(len(final), 1), cols=len(header))
+    ws.update(final, value_input_option="USER_ENTERED")
+    print(f"  ✓ {len(dated_new_rows)} new + {len(kept)} kept → '{tab_name}' (rolling {ROLLING_DAYS}d)")
+
 # ── FETCH ALL PROPERTIES ──────────────────────────────────────
 def fetch_all_properties():
     properties = []
@@ -392,7 +430,7 @@ def rows_to_dict(rows, key_cols):
         result[key] = record
     return result
 
-def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows):
+def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows, spreadsheet2=None):
     prev_date = find_previous_snapshot_date(today)
     if not prev_date:
         print("  ⚠  No previous snapshot found — skipping comparison (first run?)")
@@ -559,6 +597,22 @@ def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows):
     img_comp_sheet.update(img_comp_rows, value_input_option="USER_ENTERED")
     print(f"  ✓ {len(img_comp_rows)-1} rows → '{img_comp_tab}'")
 
+    # ── Secondary sheet: rolling 30-day log of changes only ───────
+    # 'Rooms'       = comparison rows where change_flag (col O) != NO CHANGE
+    # 'Room Images' = image rows where status (col F) != NO CHANGE
+    if spreadsheet2 is not None:
+        today_iso  = datetime.now().strftime("%Y-%m-%d")
+        rooms_new  = [[today_iso] + r for r in comp_rows[1:]     if r[14] != "NO CHANGE"]
+        images_new = [[today_iso] + r for r in img_comp_rows[1:] if r[5]  != "NO CHANGE"]
+        try:
+            push_rolling_subset(spreadsheet2, "Rooms",
+                                ["date"] + COMPARISON_HEADERS, rooms_new, today_iso)
+            push_rolling_subset(spreadsheet2, "Room Images",
+                                ["date"] + COMPARISON_IMAGE_HEADERS, images_new, today_iso)
+        except Exception as e:
+            print(f"  ⚠  Secondary sheet push failed (is it shared with the "
+                  f"service account?): {e}")
+
 # ── MAIN ──────────────────────────────────────────────────────
 def main():
     print("=" * 60)
@@ -579,6 +633,14 @@ def main():
         client      = get_gspread_client()
         spreadsheet = client.open_by_key(SHEET_ID)
 
+        spreadsheet2 = None
+        if SHEET_ID_2:
+            try:
+                spreadsheet2 = client.open_by_key(SHEET_ID_2)
+                print(f"  Secondary sheet connected: {spreadsheet2.title}")
+            except Exception as e:
+                print(f"  ⚠  Could not open secondary sheet {SHEET_ID_2}: {e}")
+
         # Step 1 — Fetch fresh data
         main_rows, image_rows = collect_data(existing_image_filenames)
 
@@ -587,8 +649,9 @@ def main():
         write_snapshot_csv(main_rows, image_rows, today, file_shas)
 
         # Step 3 — Compare this snapshot against the previous one → Google Sheets
+        #          (and push the changes-only rolling log to the secondary sheet)
         print("\nRunning comparison...")
-        run_compare(spreadsheet, today, main_rows, image_rows)
+        run_compare(spreadsheet, today, main_rows, image_rows, spreadsheet2)
 
     else:
         print("BasePMS → GitHub CSV Sync")
