@@ -584,6 +584,12 @@ def main():
     # Step 1 — Fetch fresh data
     main_rows, image_rows = collect_data(existing_image_filenames)
 
+    # Safety guard: an empty fetch must never overwrite good data
+    if len(main_rows) <= 1:
+        print("\n  ✗ 0 data rows collected — aborting before overwriting CSVs/Sheets.")
+        print("    BasePMS API likely returned empty room type data; previous outputs left untouched.")
+        raise SystemExit(1)
+
     # Step 2 — Persist full data to GitHub as CSV (latest + dated snapshot)
     write_latest_csv(main_rows, image_rows, file_shas)
     write_snapshot_csv(main_rows, image_rows, today, file_shas)
