@@ -33,15 +33,26 @@ jobs:
           print("properties on page 1:", len(items))
           first = items[0]
           print("first property:", first.get("id"), "-", first.get("name"))
+          print("property list keys:", sorted(first.keys()))
 
-          for ay in ["2025/2026", "2026/2027", None]:
-              params = {"academicYear": ay} if ay else None
-              r = requests.get(
-                  f"{root}/api/properties/{first['id']}/room_types",
-                  params=params, headers=h,
-              )
-              print("=" * 50)
-              print(f"room_types academicYear={ay!r} status: {r.status_code}")
-              print("raw body (first 2000 chars):")
-              print(r.text[:2000])
+          # Single property detail — does it embed room type info?
+          d = requests.get(f"{root}/api/properties/{first['id']}", headers=h)
+          print("=" * 50)
+          print("property detail status:", d.status_code)
+          print("detail body (first 1500 chars):", d.text[:1500])
+
+          # room_types with various params, two different properties
+          for pid in [first["id"], items[5].get("id")]:
+              for params in [{"academicYear": "2025/2026"},
+                             {"academic_year": "2025/2026"},
+                             {"year": "2025/2026"},
+                             None]:
+                  r = requests.get(
+                      f"{root}/api/properties/{pid}/room_types",
+                      params=params, headers=h,
+                  )
+                  print("=" * 50)
+                  print(f"property {pid} room_types params={params!r} "
+                        f"status: {r.status_code} body: {r.text[:300]}")
+              print("response headers:", dict(r.headers))
           EOF
