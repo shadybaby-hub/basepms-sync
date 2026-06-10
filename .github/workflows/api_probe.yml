@@ -1,0 +1,47 @@
+name: BasePMS API Probe (temporary diagnostic)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Probe room_types endpoint
+        env:
+          BASEPMS_API_TOKEN: ${{ secrets.BASEPMS_API_TOKEN }}
+        run: |
+          python -m pip install -q requests
+          python - <<'EOF'
+          import os, requests
+
+          root = "https://hfs.api.basepms.com"
+          h = {
+              "Authorization": f"Bearer {os.environ['BASEPMS_API_TOKEN']}",
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+          }
+
+          p = requests.get(root + "/api/properties", params={"page": 1}, headers=h)
+          print("properties status:", p.status_code)
+          resp = p.json()
+          items = resp if isinstance(resp, list) else (
+              resp.get("data") or resp.get("properties") or resp.get("results") or []
+          )
+          print("properties on page 1:", len(items))
+          first = items[0]
+          print("first property:", first.get("id"), "-", first.get("name"))
+
+          for ay in ["2025/2026", "2026/2027", None]:
+              params = {"academicYear": ay} if ay else None
+              r = requests.get(
+                  f"{root}/api/properties/{first['id']}/room_types",
+                  params=params, headers=h,
+              )
+              print("=" * 50)
+              print(f"room_types academicYear={ay!r} status: {r.status_code}")
+              print("raw body (first 2000 chars):")
+              print(r.text[:2000])
+          EOF
