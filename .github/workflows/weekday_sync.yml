@@ -31,7 +31,6 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_MODE: friday
         run: python basepms_sync.py
 
 permissions:
