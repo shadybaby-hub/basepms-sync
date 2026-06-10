@@ -6,9 +6,9 @@
 
 ## What This Project Does
 
-Pulls all student accommodation listings (properties, room types, pricing) from the **BasePMS API**. The **full dataset is stored as CSV files in this GitHub repo** (under `data/`). Each run also keeps a dated snapshot, publishes the **full dataset to Google Sheets** (`BasePMS` + `BasePMS Images` tabs), and generates a **run-over-run comparison report** highlighting what changed.
+Pulls all student accommodation listings (properties, room types, pricing) from the **BasePMS API**. The **full dataset is stored as CSV files in this GitHub repo** (under `data/`). Each run also keeps a dated snapshot, and the script generates a **week-over-week comparison report** highlighting what changed — the comparison is the **only** thing published to Google Sheets.
 
-Think of it as an automated price-audit pipeline: GitHub holds the raw data history, Google Sheets shows the current data plus the diff. Every published tab has the run date stamped in cell A1 (format `2026-06-05 11:37 UTC`); headers start on row 2.
+Think of it as an automated price-audit pipeline: GitHub holds the raw data history, Google Sheets shows only the diff.
 
 ---
 
@@ -25,9 +25,13 @@ Everything else is supporting infrastructure:
 
 ---
 
-## The Run (Mon–Fri at 06:42 UTC)
+## Two Run Modes
 
-There is a single pipeline, triggered by `.github/workflows/weekday_sync.yml` (scheduled weekdays; can also be run manually via `workflow_dispatch` on that workflow). Each run:
+The script behaviour is controlled by the `RUN_MODE` environment variable.
+
+### Mode 1: `sync` (manual only)
+
+Triggered by `.github/workflows/manual_sync.yml` (manual `workflow_dispatch` only — no schedule).
 
 1. Fetches all properties from BasePMS (paginated)
 2. For each property, fetches room types + pricing for **2025/2026** and **2026/2027**
@@ -35,19 +39,24 @@ There is a single pipeline, triggered by `.github/workflows/weekday_sync.yml` (s
 4. Writes the full dataset to two CSV files in this repo (via the GitHub Contents API):
    - `data/basepms_latest.csv` — one row per room type instalment (pricing, dates, thumbnail, etc.)
    - `data/basepms_images_latest.csv` — one row per image per room type
-5. Writes a **dated snapshot** of the full dataset:
+
+No Google Sheets are touched in this mode.
+
+### Mode 2: `friday` (runs Mon–Fri at 06:42 UTC)
+
+Triggered by `.github/workflows/weekday_sync.yml`. Does everything in Mode 1, **plus**:
+
+1. Writes a **dated snapshot** of the full dataset:
    - `data/snapshots/basepms_YYYYMMDD.csv`
    - `data/snapshots/basepms_images_YYYYMMDD.csv`
-6. **Publishes the full dataset to Google Sheets**: main data → the `BasePMS` tab, images → the `BasePMS Images` tab
-7. **Compares** today's snapshot against the most recent previous snapshot in the repo and **publishes the comparison report to Google Sheets** (see below)
+2. **Compares** today's snapshot against the most recent previous snapshot in the repo
+3. **Publishes the comparison report to Google Sheets** (see below)
 
 Snapshots are **kept forever** — nothing is pruned. History lives in the repo / git log.
 
-> The old standalone manual-sync workflow (`manual_sync.yml` / `RUN_MODE=sync`) and the per-row `scraped_at` CSV column have been removed — the run date in cell A1 of each tab replaces `scraped_at`.
-
 ---
 
-## The Comparison Report (Google Sheets)
+## The Comparison Report (Google Sheets — the only thing published there)
 
 Produced by `run_compare()`. Written into two Google Sheet tabs named after today's date.
 
@@ -80,18 +89,14 @@ Image-level diff. Each row is a `(property, room_type, image_url)` combination w
 
 ## Where the Data Lives
 
-| Location | Contents |
-|---|---|
-| `data/basepms_latest.csv` (GitHub) | Current live data — all properties/rooms/pricing |
-| `data/basepms_images_latest.csv` (GitHub) | All image URLs per room type |
-| `data/snapshots/basepms_YYYYMMDD.csv` (GitHub) | Dated snapshot of the full data (kept forever) |
-| `data/snapshots/basepms_images_YYYYMMDD.csv` (GitHub) | Dated snapshot of the images |
-| `BasePMS` (Sheet) | Full current dataset (same as `basepms_latest.csv`) |
-| `BasePMS Images` (Sheet) | Full current image list (same as `basepms_images_latest.csv`) |
-| `Comparison_YYYYMMDD` (Sheet) | Run-over-run pricing/date/image diff |
-| `Comparison_YYYYMMDD_images` (Sheet) | Run-over-run image diff |
-
-All four Sheet tabs are written every run, each stamped with the run date in cell A1.
+| Location | Written by | Contents |
+|---|---|---|
+| `data/basepms_latest.csv` (GitHub) | Every run | Current live data — all properties/rooms/pricing |
+| `data/basepms_images_latest.csv` (GitHub) | Every run | All image URLs per room type |
+| `data/snapshots/basepms_YYYYMMDD.csv` (GitHub) | Friday mode | Dated snapshot of the full data (kept forever) |
+| `data/snapshots/basepms_images_YYYYMMDD.csv` (GitHub) | Friday mode | Dated snapshot of the images |
+| `Comparison_YYYYMMDD` (Sheet) | Friday mode | Run-over-run pricing/date/image diff |
+| `Comparison_YYYYMMDD_images` (Sheet) | Friday mode | Run-over-run image diff |
 
 > CSVs are written via the GitHub Contents API using `GITHUB_TOKEN`. The comparison reads the previous snapshot from the **checked-out copy** of the repo, so the `weekday_sync.yml` workflow must keep the `actions/checkout` step.
 
@@ -124,12 +129,14 @@ If the domain isn't in the lookup, `brand` is left blank.
 
 Set as GitHub Actions secrets.
 
-| Variable | What it is |
-|---|---|
-| `BASEPMS_API_TOKEN` | Bearer token for the BasePMS API |
-| `GITHUB_TOKEN` | Used to write CSVs and images to this repo via the Contents API (auto-provided by GitHub Actions; needs `contents: write`) |
-| `GOOGLE_CREDENTIALS` | Full JSON of a Google service account (Sheets + Drive) — for publishing to the Sheet |
-| `SHEET_ID` | The Google Sheet ID (from the URL) |
+| Variable | Used by | What it is |
+|---|---|---|
+| `BASEPMS_API_TOKEN` | both modes | Bearer token for the BasePMS API |
+| `GITHUB_TOKEN` | both modes | Used to write CSVs and images to this repo via the Contents API (auto-provided by GitHub Actions; needs `contents: write`) |
+| `GOOGLE_CREDENTIALS` | `friday` only | Full JSON of a Google service account (Sheets + Drive) — for the comparison report |
+| `SHEET_ID` | `friday` only | The Google Sheet ID (from the URL) |
+
+`RUN_MODE` is set directly in the workflow YAML.
 
 ---
 
@@ -137,12 +144,11 @@ Set as GitHub Actions secrets.
 
 | Function | What it does |
 |---|---|
-| `main()` | Entry point — runs the full pipeline (fetch → CSVs → snapshot → Sheets → comparison) |
-| `publish_tab(spreadsheet, tab, rows, run_stamp)` | Writes rows to a Sheet tab with the run date in A1 (headers row 2) |
+| `main()` | Entry point — fetches the repo file list, then branches on `RUN_MODE` |
 | `collect_data(existing_images)` | Fetches all data, returns `(main_rows, image_rows)` ready for CSV |
 | `write_latest_csv(...)` | Writes `data/basepms_latest.csv` + images CSV to the repo |
 | `write_snapshot_csv(..., today)` | Writes the dated snapshot CSVs to `data/snapshots/` |
-| `run_compare(spreadsheet, today, main_rows, image_rows, run_stamp)` | Diffs current data vs the previous snapshot and writes the comparison tabs to the Google Sheet |
+| `run_compare(spreadsheet, today, main_rows, image_rows)` | Diffs current data vs the previous snapshot and writes the comparison tabs to the Google Sheet |
 | `find_previous_snapshot_date(today)` | Finds the most recent dated snapshot in the checkout (excluding today's) |
 | `fetch_all_properties()` | Paginates the `/api/properties` endpoint |
 | `github_put_file(path, content, msg, shas)` | Creates/updates any file in the repo via the Contents API |
@@ -164,12 +170,13 @@ The script sleeps `1.1 seconds` between every API call (`DELAY_SECONDS = 1.1`). 
 
 ## How to Run Manually
 
-Via GitHub UI: go to **Actions → BasePMS Weekday Sync & Compare → Run workflow**.
+Via GitHub UI: go to **Actions → BasePMS Manual Sync → Run workflow** (or the **BasePMS Weekday Sync & Compare** workflow).
 
-Locally (requires all four env vars set):
+Locally (requires the env vars set — `RUN_MODE=friday` also needs `GOOGLE_CREDENTIALS` and `SHEET_ID`):
 ```bash
 pip install -r requirements.txt
-python basepms_sync.py    # data + snapshot + Sheets publish + comparison
+RUN_MODE=sync   python basepms_sync.py    # full data → data/*.csv
+RUN_MODE=friday python basepms_sync.py    # data + snapshot + comparison → Sheets
 ```
 
 ## Corresponding Google Sheet: https://docs.google.com/spreadsheets/d/14Qx-9nZlACYfQoJF7EDtZBPib7LfaoeQeixMjEGpxVY/edit?gid=973262602#gid=973262602

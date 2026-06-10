@@ -7,7 +7,7 @@ import re
 import glob
 import time
 import base64
-from datetime import datetime, timezone
+from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -15,6 +15,7 @@ from google.oauth2.service_account import Credentials
 API_ROOT        = "https://hfs.api.basepms.com"
 API_TOKEN       = os.environ.get("BASEPMS_API_TOKEN", "")
 SHEET_ID        = os.environ.get("SHEET_ID", "")
+RUN_MODE        = os.environ.get("RUN_MODE", "sync")   # "sync" or "friday"
 GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO     = "shadybaby-hub/basepms-sync"
 GITHUB_BRANCH   = "main"
@@ -29,7 +30,7 @@ MAIN_HEADERS = [
     "brand", "property_name", "city", "room_type", "academic_year",
     "duration_weeks", "price_per_week", "price_formatted", "available",
     "thumbnail", "instalment_name", "start_date", "end_date",
-    "base_hub_url"
+    "base_hub_url", "scraped_at"
 ]
 
 IMAGE_HEADERS = [
@@ -226,16 +227,6 @@ def get_or_create_tab(spreadsheet, tab_name):
         print(f"  Created new tab: {tab_name}")
     return sheet
 
-def publish_tab(spreadsheet, tab_name, rows, run_stamp):
-    """Write rows to a tab with the run date in A1, headers on row 2."""
-    sheet = get_or_create_tab(spreadsheet, tab_name)
-    data  = [[f"Run date: {run_stamp}"]] + rows
-    if sheet.row_count < len(data):
-        sheet.resize(rows=len(data) + 100)
-    sheet.update(data, value_input_option="USER_ENTERED")
-    print(f"  ✓ {len(rows)-1} rows → '{tab_name}'")
-    return sheet
-
 # ── FETCH ALL PROPERTIES ──────────────────────────────────────
 def fetch_all_properties():
     properties = []
@@ -274,6 +265,7 @@ def collect_data(existing_image_filenames):
     all_properties = fetch_all_properties()
     print(f"\nTotal: {len(all_properties)} properties\n")
 
+    scraped_at = datetime.now().strftime("%d/%m/%Y %H:%M")
     main_rows  = [MAIN_HEADERS]
     image_rows = [IMAGE_HEADERS]
 
@@ -317,7 +309,8 @@ def collect_data(existing_image_filenames):
                         inst.get("name", ""),
                         inst.get("start_date", ""),
                         inst.get("end_date", ""),
-                        inst.get("base_hub_url", "")
+                        inst.get("base_hub_url", ""),
+                        scraped_at
                     ])
 
                 rt_key = (prop["id"], rt.get("id"))
@@ -340,6 +333,13 @@ def collect_data(existing_image_filenames):
     print(f"\n  ✓ {len(main_rows)-1} data rows collected")
     print(f"  ✓ {len(image_rows)-1} image rows collected")
     print(f"  ✓ {len(_uploaded_this_run)} new images uploaded to GitHub")
+
+    # Safety guard: an empty fetch must never overwrite good data
+    if len(main_rows) <= 1:
+        print("\n  ✗ 0 data rows collected — aborting before overwriting CSVs/Sheets.")
+        print("    BasePMS API likely returned empty room type data; previous outputs left untouched.")
+        raise SystemExit(1)
+
     return main_rows, image_rows
 
 # ── CSV OUTPUT ────────────────────────────────────────────────
@@ -399,7 +399,7 @@ def rows_to_dict(rows, key_cols):
         result[key] = record
     return result
 
-def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows, run_stamp):
+def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows):
     prev_date = find_previous_snapshot_date(today)
     if not prev_date:
         print("  ⚠  No previous snapshot found — skipping comparison (first run?)")
@@ -501,9 +501,11 @@ def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows, run_stamp):
 
     # Write comparison tab
     comp_tab_name = f"Comparison_{today}"
-    comp_sheet    = publish_tab(spreadsheet, comp_tab_name, comp_rows, run_stamp)
+    comp_sheet    = get_or_create_tab(spreadsheet, comp_tab_name)
+    comp_sheet.update(comp_rows, value_input_option="USER_ENTERED")
+    print(f"  ✓ {len(comp_rows)-1} rows → '{comp_tab_name}'")
 
-    # Apply yellow highlights (data starts on sheet row 3: run date + header rows)
+    # Apply yellow highlights
     if yellow_cells:
         sheet_id      = comp_sheet.id
         requests_body = []
@@ -512,8 +514,8 @@ def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows, run_stamp):
                 "repeatCell": {
                     "range": {
                         "sheetId": sheet_id,
-                        "startRowIndex":    r + 2,
-                        "endRowIndex":      r + 3,
+                        "startRowIndex":    r + 1,
+                        "endRowIndex":      r + 2,
                         "startColumnIndex": c,
                         "endColumnIndex":   c + 1
                     },
@@ -559,16 +561,15 @@ def run_compare(spreadsheet, today, curr_main_rows, curr_image_rows, run_stamp):
     for (key, url) in sorted(kept):
         img_comp_rows.append(list(key) + [url, "NO CHANGE"])
 
-    img_comp_tab = f"Comparison_{today}_images"
-    publish_tab(spreadsheet, img_comp_tab, img_comp_rows, run_stamp)
+    img_comp_tab   = f"Comparison_{today}_images"
+    img_comp_sheet = get_or_create_tab(spreadsheet, img_comp_tab)
+    img_comp_sheet.update(img_comp_rows, value_input_option="USER_ENTERED")
+    print(f"  ✓ {len(img_comp_rows)-1} rows → '{img_comp_tab}'")
 
 # ── MAIN ──────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("BasePMS Weekday Sync & Compare")
-    print("=" * 60)
-    today     = datetime.now().strftime("%Y%m%d")
-    run_stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    today = datetime.now().strftime("%Y%m%d")
 
     print("\nReading existing repo file list from GitHub...")
     file_shas = get_repo_file_shas()
@@ -577,31 +578,32 @@ def main():
     }
     print(f"  {len(existing_image_filenames)} images already uploaded")
 
-    print("\nConnecting to Google Sheets...")
-    client      = get_gspread_client()
-    spreadsheet = client.open_by_key(SHEET_ID)
+    if RUN_MODE == "friday":
+        print("BasePMS Friday Sync & Compare")
+        print("=" * 60)
 
-    # Step 1 — Fetch fresh data
-    main_rows, image_rows = collect_data(existing_image_filenames)
+        print("\nConnecting to Google Sheets...")
+        client      = get_gspread_client()
+        spreadsheet = client.open_by_key(SHEET_ID)
 
-    # Safety guard: an empty fetch must never overwrite good data
-    if len(main_rows) <= 1:
-        print("\n  ✗ 0 data rows collected — aborting before overwriting CSVs/Sheets.")
-        print("    BasePMS API likely returned empty room type data; previous outputs left untouched.")
-        raise SystemExit(1)
+        # Step 1 — Fetch fresh data
+        main_rows, image_rows = collect_data(existing_image_filenames)
 
-    # Step 2 — Persist full data to GitHub as CSV (latest + dated snapshot)
-    write_latest_csv(main_rows, image_rows, file_shas)
-    write_snapshot_csv(main_rows, image_rows, today, file_shas)
+        # Step 2 — Persist full data to GitHub as CSV (latest + dated snapshot)
+        write_latest_csv(main_rows, image_rows, file_shas)
+        write_snapshot_csv(main_rows, image_rows, today, file_shas)
 
-    # Step 3 — Publish full data to Google Sheets
-    print("\nPublishing full data to Google Sheets...")
-    publish_tab(spreadsheet, "BasePMS", main_rows, run_stamp)
-    publish_tab(spreadsheet, "BasePMS Images", image_rows, run_stamp)
+        # Step 3 — Compare this snapshot against the previous one → Google Sheets
+        print("\nRunning comparison...")
+        run_compare(spreadsheet, today, main_rows, image_rows)
 
-    # Step 4 — Compare this snapshot against the previous one → Google Sheets
-    print("\nRunning comparison...")
-    run_compare(spreadsheet, today, main_rows, image_rows, run_stamp)
+    else:
+        print("BasePMS → GitHub CSV Sync")
+        print("=" * 60)
+        print("\nMode: SYNC → data/basepms_latest.csv, data/basepms_images_latest.csv")
+
+        main_rows, image_rows = collect_data(existing_image_filenames)
+        write_latest_csv(main_rows, image_rows, file_shas)
 
     print("\n" + "=" * 60)
     print("COMPLETE")
