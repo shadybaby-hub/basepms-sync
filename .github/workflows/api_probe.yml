@@ -6,53 +6,57 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
-      - name: Probe room_types endpoint
+      - name: Probe room_types across academic years
         env:
           BASEPMS_API_TOKEN: ${{ secrets.BASEPMS_API_TOKEN }}
         run: |
           python -m pip install -q requests
           python - <<'EOF'
-          import os, requests
+          import os, time, requests
 
-          root = "https://hfs.api.basepms.com"
-          h = {
+          ROOT = "https://hfs.api.basepms.com"
+          YEARS = ["2024/2025", "2025/2026", "2026/2027", "2027/2028"]
+          H = {
               "Authorization": f"Bearer {os.environ['BASEPMS_API_TOKEN']}",
               "Accept": "application/json",
               "Content-Type": "application/json",
           }
 
-          p = requests.get(root + "/api/properties", params={"page": 1}, headers=h)
-          print("properties status:", p.status_code)
-          resp = p.json()
-          items = resp if isinstance(resp, list) else (
-              resp.get("data") or resp.get("properties") or resp.get("results") or []
-          )
-          print("properties on page 1:", len(items))
-          first = items[0]
-          print("first property:", first.get("id"), "-", first.get("name"))
-          print("property list keys:", sorted(first.keys()))
+          def to_list(resp):
+              if not resp:
+                  return []
+              if isinstance(resp, list):
+                  return resp
+              if isinstance(resp, dict):
+                  for k in ["data", "results", "items", "properties",
+                            "room_types", "instalments"]:
+                      if isinstance(resp.get(k), list):
+                          return resp[k]
+                  return [resp]
+              return []
 
-          # Single property detail — does it embed room type info?
-          d = requests.get(f"{root}/api/properties/{first['id']}", headers=h)
-          print("=" * 50)
-          print("property detail status:", d.status_code)
-          print("detail body (first 1500 chars):", d.text[:1500])
+          def get(path, params=None):
+              r = requests.get(ROOT + path, params=params, headers=H, timeout=30)
+              r.raise_for_status()
+              return r.json()
 
-          # room_types with various params, two different properties
-          for pid in [first["id"], items[5].get("id")]:
-              for params in [{"academicYear": "2025/2026"},
-                             {"academic_year": "2025/2026"},
-                             {"year": "2025/2026"},
-                             None]:
-                  r = requests.get(
-                      f"{root}/api/properties/{pid}/room_types",
-                      params=params, headers=h,
-                  )
-                  print("=" * 50)
-                  print(f"property {pid} room_types params={params!r} "
-                        f"status: {r.status_code} body: {r.text[:300]}")
-              print("response headers:", dict(r.headers))
+          props = to_list(get("/api/properties", {"page": 1}))
+          print(f"properties on page 1: {len(props)}\n")
+
+          # Sample the first 3 properties so one odd listing doesn't skew things.
+          for prop in props[:3]:
+              print(f"Property {prop.get('id')}: {prop.get('name')}")
+              for ay in YEARS:
+                  time.sleep(1.1)
+                  try:
+                      rt = to_list(get(f"/api/properties/{prop['id']}/room_types",
+                                       {"academicYear": ay}))
+                      insts = sum(len(to_list(x.get("instalments", []))) for x in rt)
+                      print(f"    {ay}:  {len(rt):3d} room types, {insts:4d} instalments")
+                  except Exception as e:
+                      print(f"    {ay}:  ERROR {e}")
+              print()
           EOF
