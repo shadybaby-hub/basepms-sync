@@ -9,10 +9,11 @@ brand,property_name,city,room_type,image_id,image_name,image_url
 ,Aire,Stoke-on-Trent,Gold Plus Studio,18,Aire - Gold Plus Studio - Image 2.png,https://hfs.api.basepms.com/filesystem/room_types/images/9So1rYWAw5pQZXNXLGfoqkVgrVX0ZQ5e0bDJRAfV.png
 ,Aire,Stoke-on-Trent,Gold Plus Studio,19,Aire - Gold Plus Studio - Image 3.png,https://hfs.api.basepms.com/filesystem/room_types/images/F30RFJacIbCovNDCjVlgWVB0KLDkpdDv6L5pKA30.png
 ,Aire,Stoke-on-Trent,Gold Plus Studio,20,Aire - Gold Studio - Image 4.png,https://hfs.api.basepms.com/filesystem/room_types/images/XUQtScXGsfl4Y6mg1IsPkI6DZYS4a4WdpLa5SJqe.png
-,Aire,Stoke-on-Trent,Gold Studio,5,Aire - Gold Studio - Image 1.png,https://hfs.api.basepms.com/filesystem/room_types/images/pLljZshqHDBY7jmA9hs43VnHUUajSbUemyNt36Sm.png
-,Aire,Stoke-on-Trent,Gold Studio,6,Aire - Gold Studio - Image 2.png,https://hfs.api.basepms.com/filesystem/room_types/images/aDqnCK4Ig0kM9l8QwGtw5X7ihs6qydpITXrzvUIQ.png
-,Aire,Stoke-on-Trent,Gold Studio,7,Aire - Gold Studio - Image 3.png,https://hfs.api.basepms.com/filesystem/room_types/images/vsDPFjEbvGERMpjwcM3mFXBmifCsVrqkupaTWMCv.png
-,Aire,Stoke-on-Trent,Gold Studio,8,Aire - Gold Studio - Image 4.png,https://hfs.api.basepms.com/filesystem/room_types/images/WSXjACXFuVWJUjW9MA005j6tcYnzweJOiih998IO.png
+,Aire,Stoke-on-Trent,Gold Studio,10830,student-accommodation-stoke-on-trent-aire-gold-studio-living-area.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/aJ8c9uCK91P7BjBEzHcAwqlmAKFIqo6PvRRg1n9A.jpg
+,Aire,Stoke-on-Trent,Gold Studio,10831,student-accommodation-stoke-on-trent-aire-gold-studio.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/UEd8FqIoofbKZKgyQphUPaSWFgEH27fz638fOjFv.jpg
+,Aire,Stoke-on-Trent,Gold Studio,10832,student-accommodation-stoke-on-trent-aire-gold-studio-kitchen.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/UPL8MpoZrlr4QYMWb3CTmLhkjUuya7uJSQk8rNMa.jpg
+,Aire,Stoke-on-Trent,Gold Studio,10833,student-accommodation-stoke-on-trent-aire-gold-studio-living-space-wc.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/e8Jh9bbe77rCgCHGp5rwdV7m6ow6qddDjjMlZ0AG.jpg
+,Aire,Stoke-on-Trent,Gold Studio,10834,student-accommodation-stoke-on-trent-aire-gold-studio-study-area.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/pwD1UIiUkRUR0tSp6MBmV14eUxbmwo9Ux5Bj5WQx.jpg
 ,Aire,Stoke-on-Trent,Silver Studio,9,Aire - Silver Studio - Image 1.png,https://hfs.api.basepms.com/filesystem/room_types/images/nME1FdVOHN2UgEho0bgRgCfI0gcIRjpvu3qzN6fe.png
 ,Aire,Stoke-on-Trent,Silver Studio,10,Aire - Silver Studio - Image 2.png,https://hfs.api.basepms.com/filesystem/room_types/images/T2hTnkk7jSAACS1N4kVpZmtsuY5LPnApukxhrf3I.png
 ,Aire,Stoke-on-Trent,Silver Studio,11,Aire - Silver Studio - Image 3.png,https://hfs.api.basepms.com/filesystem/room_types/images/IDAgo8oGrUcvvSeyQdAfgrK0eWjmtojqHI1GeW1z.png
@@ -21,10 +22,12 @@ brand,property_name,city,room_type,image_id,image_name,image_url
 ,Aire,Stoke-on-Trent,Standard Studio,82,Aire - Bronze Studio - Image 4.png,https://hfs.api.basepms.com/filesystem/room_types/images/dVuHvXGxqY988Oa54ybIxYfDIhukHmk5LrCPk6H4.png
 ,Aire,Stoke-on-Trent,Standard Studio,83,Aire - Bronze Studio - Image 2.png,https://hfs.api.basepms.com/filesystem/room_types/images/fCoj7Xo7JBvgzhnSfciHw3wIjW2jvfC2L4vVpaB4.png
 ,Aire,Stoke-on-Trent,Standard Studio,84,Aire - Bronze Studio - Image 3.png,https://hfs.api.basepms.com/filesystem/room_types/images/g74r9dlrb1aw3kFNIsLiaiXvPsYGfN1Y9A7D23KX.png
-,Aire,Stoke-on-Trent,Twodio,13,Aire - Twodio - Image 1.png,https://hfs.api.basepms.com/filesystem/room_types/images/GbSKuJ7SRkkTPVUVH4NOqITfXf8MicBRMokSLjIe.png
-,Aire,Stoke-on-Trent,Twodio,14,Aire - Twodio - Image 2.png,https://hfs.api.basepms.com/filesystem/room_types/images/HOC1QNYaBSBHmgJW5WYLDAlIS58FbEo0ylaIKkoX.png
-,Aire,Stoke-on-Trent,Twodio,15,Aire - Twodio - Image 3.png,https://hfs.api.basepms.com/filesystem/room_types/images/E5VYBRvI7D98CqVaXGt4gZqay1dzcOUtTDTHsdX5.png
-,Aire,Stoke-on-Trent,Twodio,16,Aire - Twodio - Image 4.png,https://hfs.api.basepms.com/filesystem/room_types/images/QrIIO53APhvjiKcQMO0SBBwruHfD0F6fUMH4tn3R.png
+,Aire,Stoke-on-Trent,Twodio,10835,student-accommodation-stoke-on-trent-aire-twodio-apartment-bed.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/6znytCY5QY6RzVREfePUwjagsSTxQA7z1j2CLg2M.jpg
+,Aire,Stoke-on-Trent,Twodio,10836,student-accommodation-stoke-on-trent-aire-twodio-apartment-wc-.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/EqrECdSGdpwPlaJMUNHfv9TGwskhYzkyENbzhORl.jpg
+,Aire,Stoke-on-Trent,Twodio,10837,student-accommodation-stoke-on-trent-aire-twodio-apartment-sleep-tv.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/AJLmPxrRoNiM6COiXiwjN6MirpSq62lU06ODLSj7.jpg
+,Aire,Stoke-on-Trent,Twodio,10838,student-accommodation-stoke-on-trent-aire-twodio-apartment-kitchen.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/eHJMn7mu28LZs8T6ICsYbevATcLez2C6GYdsbn8m.jpg
+,Aire,Stoke-on-Trent,Twodio,10839,student-accommodation-stoke-on-trent-aire-twodio-apartment-worktops-kitchen.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/l6R3785T4nqWPQQRPJWm3BgJZaoUpifATmJZlbdm.jpg
+,Aire,Stoke-on-Trent,Twodio,10840,student-accommodation-stoke-on-trent-aire-twodio-apartment-wc-kitchen.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/r5vSPHGAh9Q0Qt91MrHWdemDoCSu7ccooMVN5jnq.jpg
 ,Hassell's Bridge,Newcastle-under-Lyme,1 Bed Apartment,7674,student-accommodation-hassells-bridge-apartments-two-bed-apartment10.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/1CCFnsnruPu1nhR4EFI4TsLi5hBrJLvKeMwRjW6D.jpg
 ,Hassell's Bridge,Newcastle-under-Lyme,2 Bed Apartment,7675,student-accommodation-hassells-bridge-apartments-two-bed-apartment10.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/p3YCghidDwssEQhD4FEwkJxFKQbdaT4GvivHllSf.jpg
 ,Hassell's Bridge,Newcastle-under-Lyme,2 Bed Apartment,7676,student-accommodation-hassells-bridge-apartments-two-bed-apartment5.jpg,https://hfs.api.basepms.com/filesystem/room_types/images/T0tatxO7D8MpAPxbSE68JCgaJ8vKHbDeB9ZTGwMZ.jpg
