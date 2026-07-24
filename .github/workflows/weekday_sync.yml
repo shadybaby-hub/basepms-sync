@@ -1,11 +1,7 @@
 name: BasePMS Weekday Sync & Compare
 
 on:
-  # Scheduled: Monday–Friday at 07:42 BST (06:42 UTC)
-  schedule:
-    - cron: '42 6 * * 1-5'
-
-  # Manual trigger
+  # On-demand only — run manually from the Actions tab
   workflow_dispatch:
 
 jobs:
