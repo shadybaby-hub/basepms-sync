@@ -4,6 +4,60 @@
 
 ---
 
+## 🛑 ON HOLD — until further notice (decided 2026-08-08)
+
+**Do not run, re-schedule, or "fix" this project without asking first.** The user has
+parked it. Leave the workflows on `workflow_dispatch`-only (the weekday schedule was
+removed in `98e9ab9`) — **putting it back on a schedule would actively destroy data**,
+because a scheduled run now commits a ~72-row snapshot over the good June data.
+
+### What is actually wrong (measured 2026-08-08, supersedes the 2026-07-01 note below)
+
+The pipeline **did not stop** — it silently collapsed to ~2% of the portfolio and kept
+committing green runs:
+
+| Snapshot | Rows | Properties |
+|---|---|---|
+| `basepms_20260603` … `20260609` | ~3,300 → 2,650 | **223** |
+| `basepms_20260706` … `20260717` | **78** | **5** |
+| `basepms_20260720` (latest) | **72** | **5** |
+
+It collapsed around **2026-06-09/10** and never recovered. The July runs passed because
+72 rows clears the zero-row safety guard in `collect_data()` — so the guard did **not**
+protect us here; it only catches a total wipeout, not a 98% one. Nothing alerted.
+
+**Two clues to start from:**
+1. The 5 surviving properties — Aire, Hassell's Bridge, Hilbre Gardens, Keele House,
+   Leighton Hall — are **all Urban Student Life**, i.e. one brand out of six.
+2. `brand` is blank on **72 of 72** rows, where it was populated on 2026-06-09.
+
+That points at the **`BASEPMS_API_TOKEN` losing its multi-brand scope** (or the account
+behind it being narrowed), *not* at a code bug. First check when this is picked up:
+does the token still return all 223 properties from `/api/properties`?
+
+> ❌ **The old academic-year hypothesis is DISPROVEN.** The 2026-07-01 note guessed that
+> `ACADEMIC_YEARS = ["2025/2026", "2026/2027"]` had gone stale after a rollover. It has
+> not — the current data still contains **both** `2025 / 2026` and `2026 / 2027` rows.
+> The years are fine; the property access is not. Don't spend time there.
+
+### Knock-on effect elsewhere (why this matters beyond this repo)
+
+`rooms-data` renders BASE thumbnails in its **"Room Types + Thumbnails"** audit tab via
+`=IMAGE()` pointing at this repo's public `images/` mirror (basepms's own image URLs are
+auth-gated and render broken). Because this project is frozen, **that mirror is stuck at
+the 2026-07-20 snapshot**, so **184 of 1,596** thumbnails don't render (86.5% coverage)
+and coverage will decay as basepms swaps images. Running the sync in its current state
+would **not** help — it would touch only the 5 USL properties. Fixing that gap requires
+fixing this project first.
+
+_Superseded note, kept for history — 2026-07-01: "no fresh data since 2026-06-10, empty
+`room_types` responses, hits the zero-row guard; leading hypothesis stale `ACADEMIC_YEARS`;
+diagnostic `.github/workflows/api_probe.yml` sweeps 2024/2025–2027/2028." The empty-response
+symptom did change (data returns, just almost none) and the hypothesis is disproven, but
+`api_probe.yml` is still there as a **temporary diagnostic** — remove it once root-caused._
+
+---
+
 ## What This Project Does
 
 Pulls all student accommodation listings (properties, room types, pricing) from the **BasePMS API**. The **full dataset is stored as CSV files in this GitHub repo** (under `data/`). Each run also keeps a dated snapshot, and the script generates a **week-over-week comparison report** highlighting what changed — the comparison is the **only** thing published to Google Sheets.
