@@ -11,6 +11,34 @@ parked it. Leave the workflows on `workflow_dispatch`-only (the weekday schedule
 removed in `98e9ab9`) — **putting it back on a schedule would actively destroy data**,
 because a scheduled run now commits a ~72-row snapshot over the good June data.
 
+### 2026-08-13 — the token now fails authentication outright
+
+The owner supplied a token (`631433|…`) and it returns **401 Unauthenticated on every
+endpoint**. Ruled out: `Bearer` / raw / `Token` / `X-API-KEY` / `X-Auth-Token` / `api-token`
+headers, three query-param styles, and splitting the token at the `|`. A nonexistent path
+returns 404 unauthenticated, so the host and routing are healthy — it is the credential.
+
+**This revises the scope hypothesis below.** A narrowed-scope token authenticates fine and
+returns less; this one does not authenticate at all. So either that token is not the one the
+GitHub secret holds, or API access was revoked entirely after the 20 July run.
+
+**Owner has no access to a new token** (2026-08-13), so this stays blocked on whoever
+administers the BasePMS account. The one diagnostic still available without a token is
+dispatching **`api_probe.yml`** from the Actions tab — it runs with the repo secret, so it
+tests CI's copy. If it authenticates, the secret holds a different, working token and the
+scope hypothesis stands; if it 401s, access is gone. **Do not dispatch `manual_sync.yml`** —
+it commits a snapshot, and while the data is collapsed that writes ~72 rows over the good
+June data.
+
+**Downstream is no longer fully blocked.** `hfs-image-compare` was repointed on 2026-08-13
+to hfs-scraper's live website images (`--source website`) and works again without BasePMS.
+Still dependent on this project: the rooms-data BASE thumbnail mirror, and any use of
+availability or instalments — hfs-scraper reads the public website and cannot supply either,
+and collapsing the two sources would destroy the website-vs-PMS cross-check.
+
+The last good data remains in this repo: `data/snapshots/basepms_20260603.csv`
+(3,344 rows / 231 properties) and `basepms_images_20260603.csv` (7,910 rows).
+
 ### What is actually wrong (measured 2026-08-08, supersedes the 2026-07-01 note below)
 
 The pipeline **did not stop** — it silently collapsed to ~2% of the portfolio and kept
