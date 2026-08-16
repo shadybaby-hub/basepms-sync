@@ -5,7 +5,7 @@ This project is ON HOLD. This file exists so the cross-project rules are findabl
 ## Universal rules — read before changing anything
 
 Rules that apply across **every** shadybaby-hub project live in one place, not in
-each repo. BASE Data Tracker `1gnSbSo2yEc4kSTwEDeyaz8XK4ASucM0Bb5JaChqXf_8`:
+each repo. 'HFS & Agents URLs' `1gnSbSo2yEc4kSTwEDeyaz8XK4ASucM0Bb5JaChqXf_8`:
 
 | Tab | What it holds | Who edits it |
 |---|---|---|
